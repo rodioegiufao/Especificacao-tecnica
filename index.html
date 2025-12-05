@@ -6,6 +6,9 @@
     <title>Gerador de Especificações Técnicas</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.1.0/index.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
 </head>
 <body>
     <div class="container">
@@ -24,105 +27,91 @@
             <aside class="sidebar">
                 <div class="sidebar-section">
                     <h3><i class="fas fa-database"></i> Base de Dados</h3>
-                    <div class="database-status">
-                        <span id="db-status" class="status-badge status-success">
-                            <i class="fas fa-check-circle"></i> Base Carregada
+                    <div id="db-status-container" class="database-status">
+                        <span id="db-status" class="status-badge status-warning">
+                            <i class="fas fa-exclamation-circle"></i> Base Não Carregada
                         </span>
-                        <p class="db-info">Sistema pronto para gerar especificações</p>
+                        <p class="db-info">Carregue a base de dados para começar</p>
                     </div>
-                    <button class="btn btn-secondary" id="view-db-btn">
-                        <i class="fas fa-table"></i> Visualizar Base
-                    </button>
+                    <div class="db-upload-section">
+                        <input type="file" id="db-file-input" accept=".xlsx, .xls" hidden>
+                        <button class="btn btn-secondary" id="load-db-btn">
+                            <i class="fas fa-upload"></i> Carregar Base de Dados
+                        </button>
+                        <button class="btn btn-outline" id="view-db-btn" disabled>
+                            <i class="fas fa-table"></i> Visualizar Base
+                        </button>
+                    </div>
+                    <div id="db-info" class="hidden">
+                        <p><i class="fas fa-check"></i> Base: <span id="db-name">Nenhuma</span></p>
+                        <p><i class="fas fa-list"></i> Itens: <span id="db-count">0</span></p>
+                    </div>
                 </div>
 
                 <div class="sidebar-section">
-                    <h3><i class="fas fa-download"></i> Templates</h3>
-                    <div class="templates">
-                        <a href="#" class="template-link" id="download-template">
-                            <i class="fas fa-file-excel"></i> Template Orçamento
-                        </a>
+                    <h3><i class="fas fa-file-excel"></i> Upload de Orçamento</h3>
+                    <div class="upload-section">
+                        <input type="file" id="budget-file-input" accept=".xlsx, .xls" hidden>
+                        <button class="btn btn-primary" id="load-budget-btn">
+                            <i class="fas fa-upload"></i> Carregar Orçamento
+                        </button>
+                        <p class="help-text">Formato Excel com colunas: Item, Código, Descrição, Und, Quant.</p>
                     </div>
                 </div>
 
                 <div class="sidebar-section">
-                    <h3><i class="fas fa-info-circle"></i> Ajuda</h3>
-                    <div class="help-content">
-                        <p>Formatos suportados:</p>
-                        <ul>
-                            <li>Excel (.xlsx)</li>
-                            <li>Colunas: Item, Código, Descrição, Und, Quant.</li>
-                        </ul>
+                    <h3><i class="fas fa-cogs"></i> Configurações</h3>
+                    <div class="settings">
+                        <label class="checkbox">
+                            <input type="checkbox" id="auto-match" checked>
+                            <span>Busca automática na base</span>
+                        </label>
+                        <label class="checkbox">
+                            <input type="checkbox" id="include-norms" checked>
+                            <span>Incluir normas técnicas</span>
+                        </label>
+                        <label class="checkbox">
+                            <input type="checkbox" id="detailed-spec" checked>
+                            <span>Especificações detalhadas</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3><i class="fas fa-info-circle"></i> Status</h3>
+                    <div class="status-info">
+                        <div class="status-item">
+                            <span class="status-label">Base de Dados:</span>
+                            <span id="status-db" class="status-value">❌ Não carregada</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Orçamento:</span>
+                            <span id="status-budget" class="status-value">❌ Não carregado</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Pronto para gerar:</span>
+                            <span id="status-ready" class="status-value">❌</span>
+                        </div>
                     </div>
                 </div>
             </aside>
 
             <!-- Main Panel -->
             <section class="main-panel">
-                <!-- Step 1: Upload -->
-                <div class="card" id="upload-section">
+                <!-- Data Preview -->
+                <div class="card hidden" id="budget-preview-card">
                     <div class="card-header">
-                        <h2><i class="fas fa-upload"></i> 1. Upload do Orçamento</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="upload-area" id="drop-area">
-                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
-                            <p>Arraste e solte seu arquivo Excel aqui</p>
-                            <p class="upload-subtext">ou</p>
-                            <input type="file" id="file-input" accept=".xlsx, .xls" hidden>
-                            <button class="btn btn-primary" id="browse-btn">
-                                <i class="fas fa-folder-open"></i> Selecione o Arquivo
+                        <h2><i class="fas fa-table"></i> Dados do Orçamento</h2>
+                        <div class="card-actions">
+                            <span id="budget-item-count" class="badge">0 itens</span>
+                            <button class="btn btn-sm btn-secondary" id="clear-budget-btn">
+                                <i class="fas fa-times"></i> Limpar
                             </button>
-                            <p class="file-types">Formatos suportados: .xlsx, .xls</p>
                         </div>
-                        <div id="file-info" class="hidden">
-                            <div class="file-details">
-                                <i class="fas fa-file-excel"></i>
-                                <div>
-                                    <p id="file-name"></p>
-                                    <p id="file-size" class="file-size"></p>
-                                </div>
-                                <button class="btn-remove" id="remove-file">
-                                    <i class="fas fa-times"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Step 2: Project Info -->
-                <div class="card" id="project-section">
-                    <div class="card-header">
-                        <h2><i class="fas fa-project-diagram"></i> 2. Informações do Projeto</h2>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-group">
-                            <label for="project-name">
-                                <i class="fas fa-tag"></i> Nome do Projeto
-                            </label>
-                            <input type="text" id="project-name" class="form-control" 
-                                   placeholder="Ex: Projeto Elétrico Predial" value="Projeto Elétrico">
-                        </div>
-                        <div class="form-group">
-                            <label for="project-date">
-                                <i class="fas fa-calendar-alt"></i> Data de Emissão
-                            </label>
-                            <input type="date" id="project-date" class="form-control" 
-                                   value="">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Step 3: Data Preview -->
-                <div class="card hidden" id="preview-section">
-                    <div class="card-header">
-                        <h2><i class="fas fa-table"></i> Prévia dos Dados</h2>
-                        <button class="btn btn-sm btn-secondary" id="toggle-preview">
-                            <i class="fas fa-expand-alt"></i>
-                        </button>
                     </div>
                     <div class="card-body">
                         <div class="table-container">
-                            <table id="data-preview">
+                            <table id="budget-preview-table">
                                 <thead>
                                     <tr>
                                         <th>Item</th>
@@ -138,60 +127,116 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div class="preview-footer">
-                            <span id="item-count">0 itens carregados</span>
+                    </div>
+                </div>
+
+                <!-- Project Info -->
+                <div class="card" id="project-card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-project-diagram"></i> Informações do Projeto</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="project-name">
+                                    <i class="fas fa-tag"></i> Nome do Projeto *
+                                </label>
+                                <input type="text" id="project-name" class="form-control" 
+                                       placeholder="Ex: Projeto Elétrico Predial" value="Projeto Elétrico" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="project-date">
+                                    <i class="fas fa-calendar-alt"></i> Data de Emissão
+                                </label>
+                                <input type="date" id="project-date" class="form-control" 
+                                       value="">
+                            </div>
+                            <div class="form-group">
+                                <label for="project-code">
+                                    <i class="fas fa-hashtag"></i> Código do Projeto
+                                </label>
+                                <input type="text" id="project-code" class="form-control" 
+                                       placeholder="EX-2023-001">
+                            </div>
+                            <div class="form-group">
+                                <label for="client-name">
+                                    <i class="fas fa-user-tie"></i> Cliente
+                                </label>
+                                <input type="text" id="client-name" class="form-control" 
+                                       placeholder="Nome do cliente">
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Step 4: Generate Document -->
-                <div class="card" id="generate-section">
+                <!-- Specification Preview -->
+                <div class="card hidden" id="spec-preview-card">
                     <div class="card-header">
-                        <h2><i class="fas fa-file-word"></i> 3. Gerar Especificações Técnicas</h2>
+                        <h2><i class="fas fa-eye"></i> Prévia das Especificações</h2>
+                        <button class="btn btn-sm btn-secondary" id="refresh-preview-btn">
+                            <i class="fas fa-sync-alt"></i> Atualizar
+                        </button>
                     </div>
                     <div class="card-body">
-                        <div class="generator-options">
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="include-images" checked>
-                                    Incluir imagens de referência
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="include-norms" checked>
-                                    Incluir referências normativas
-                                </label>
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    <input type="checkbox" id="include-installation" checked>
-                                    Incluir procedimentos de instalação
-                                </label>
-                            </div>
+                        <div class="spec-preview-container" id="spec-preview-container">
+                            <p class="info-text">As especificações serão geradas automaticamente com base nos dados do orçamento.</p>
                         </div>
-                        
-                        <button class="btn btn-primary btn-generate" id="generate-btn" disabled>
-                            <i class="fas fa-magic"></i> Gerar Documento Word
-                        </button>
-                        
-                        <div class="progress-container hidden" id="progress-container">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="progress-fill"></div>
-                            </div>
-                            <span id="progress-text">0%</span>
-                        </div>
+                    </div>
+                </div>
 
-                        <div class="download-section hidden" id="download-section">
-                            <div class="download-ready">
-                                <i class="fas fa-check-circle success-icon"></i>
-                                <div>
-                                    <h4>Documento Gerado com Sucesso!</h4>
-                                    <p id="generated-file-name"></p>
+                <!-- Generate Document -->
+                <div class="card" id="generate-card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-file-word"></i> Gerar Documento</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="generate-section">
+                            <div class="format-options">
+                                <h4><i class="fas fa-cog"></i> Opções de Formato</h4>
+                                <div class="radio-group">
+                                    <label class="radio">
+                                        <input type="radio" name="format" value="docx" checked>
+                                        <span>Documento Word (.docx) - Completo</span>
+                                    </label>
+                                    <label class="radio">
+                                        <input type="radio" name="format" value="txt">
+                                        <span>Texto Simples (.txt) - Rápido</span>
+                                    </label>
                                 </div>
-                                <button class="btn btn-success" id="download-btn">
-                                    <i class="fas fa-download"></i> Baixar Documento
+                            </div>
+
+                            <div class="action-buttons">
+                                <button class="btn btn-primary btn-lg" id="generate-btn" disabled>
+                                    <i class="fas fa-magic"></i> Gerar Especificações Técnicas
                                 </button>
+                                
+                                <button class="btn btn-secondary btn-lg" id="preview-btn" disabled>
+                                    <i class="fas fa-eye"></i> Ver Prévia
+                                </button>
+                            </div>
+
+                            <div class="progress-container hidden" id="progress-container">
+                                <div class="progress-info">
+                                    <span id="progress-text">Gerando documento...</span>
+                                    <span id="progress-percent">0%</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill"></div>
+                                </div>
+                            </div>
+
+                            <div class="download-section hidden" id="download-section">
+                                <div class="download-ready">
+                                    <i class="fas fa-check-circle success-icon"></i>
+                                    <div class="download-info">
+                                        <h4>Documento Gerado com Sucesso!</h4>
+                                        <p id="generated-file-name"></p>
+                                        <p class="download-stats" id="download-stats"></p>
+                                    </div>
+                                    <button class="btn btn-success btn-lg" id="download-btn">
+                                        <i class="fas fa-download"></i> Baixar Documento
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -211,10 +256,17 @@
                 <div class="modal-body">
                     <div class="modal-tabs">
                         <button class="tab-btn active" data-tab="view">Visualizar</button>
-                        <button class="tab-btn" data-tab="update">Atualizar</button>
+                        <button class="tab-btn" data-tab="info">Informações</button>
                     </div>
                     
                     <div class="tab-content active" id="tab-view">
+                        <div class="table-controls">
+                            <div class="search-box">
+                                <i class="fas fa-search"></i>
+                                <input type="text" id="db-search" placeholder="Buscar na base de dados...">
+                            </div>
+                            <span id="db-result-count">0 itens encontrados</span>
+                        </div>
                         <div class="table-container">
                             <table id="db-table">
                                 <thead>
@@ -223,6 +275,7 @@
                                         <th>Banco</th>
                                         <th>DESCRIÇÃO</th>
                                         <th>ESPECIFICAÇÃO TÉCNICA</th>
+                                        <th>Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody id="db-tbody">
@@ -230,30 +283,47 @@
                                 </tbody>
                             </table>
                         </div>
+                        <div class="table-footer">
+                            <div class="pagination">
+                                <button class="btn btn-sm" id="prev-page" disabled>← Anterior</button>
+                                <span id="page-info">Página 1 de 1</span>
+                                <button class="btn btn-sm" id="next-page" disabled>Próxima →</button>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div class="tab-content" id="tab-update">
-                        <div class="update-db">
-                            <p>Faça upload de uma nova versão da base de dados:</p>
-                            <div class="upload-area-sm">
-                                <i class="fas fa-file-excel"></i>
-                                <p>Arraste um arquivo Excel (.xlsx)</p>
-                                <input type="file" id="db-file-input" accept=".xlsx" hidden>
-                                <button class="btn btn-primary" id="browse-db-btn">
-                                    Selecionar Arquivo
-                                </button>
-                            </div>
-                            <div id="db-file-info" class="hidden">
-                                <div class="file-details">
-                                    <i class="fas fa-file-excel"></i>
-                                    <div>
-                                        <p id="db-file-name"></p>
-                                        <p id="db-file-size" class="file-size"></p>
-                                    </div>
+                    <div class="tab-content" id="tab-info">
+                        <div class="db-info-content">
+                            <h4>Informações da Base de Dados</h4>
+                            <div class="info-grid">
+                                <div class="info-item">
+                                    <span class="info-label">Total de Itens:</span>
+                                    <span id="info-total-items" class="info-value">0</span>
                                 </div>
-                                <button class="btn btn-success" id="update-db-btn">
-                                    <i class="fas fa-sync"></i> Atualizar Base
-                                </button>
+                                <div class="info-item">
+                                    <span class="info-label">Bancos Diferentes:</span>
+                                    <span id="info-banks" class="info-value">0</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Última Atualização:</span>
+                                    <span id="info-last-update" class="info-value">Nunca</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="info-label">Tamanho da Base:</span>
+                                    <span id="info-db-size" class="info-value">0 KB</span>
+                                </div>
+                            </div>
+                            
+                            <div class="backup-section">
+                                <h5>Backup da Base</h5>
+                                <div class="backup-buttons">
+                                    <button class="btn btn-secondary" id="export-db-btn">
+                                        <i class="fas fa-download"></i> Exportar Base
+                                    </button>
+                                    <button class="btn btn-primary" id="import-db-btn">
+                                        <i class="fas fa-upload"></i> Importar Base
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -264,7 +334,6 @@
 
     <!-- Scripts -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
