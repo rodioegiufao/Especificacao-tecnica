@@ -122,7 +122,7 @@ class GeradorEspecificacoes {
         if (!file) return;
 
         try {
-            // FIX: Passa { header: 4 } para ler o cabeçalho na linha correta
+            // FIX: Passa { header: 4 } para forçar a leitura do cabeçalho na 4ª linha
             const data = await this.readExcelFile(file, { header: 4 }); 
             
             this.budgetData = this.processBudgetData(data);
@@ -143,7 +143,7 @@ class GeradorEspecificacoes {
 
     // script.js - Localize esta função
 
-    async readExcelFile(file, sheetToJsonOptions = {}) { // <--- A função agora aceita opções
+    async readExcelFile(file, sheetToJsonOptions = {}) { // <--- Adiciona o parâmetro de opções
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             
@@ -156,7 +156,7 @@ class GeradorEspecificacoes {
                     const result = [];
                     workbook.SheetNames.forEach(sheetName => {
                         const worksheet = workbook.Sheets[sheetName];
-                        // O parâmetro é usado aqui
+                        // Usa o parâmetro 'sheetToJsonOptions' aqui
                         const jsonData = XLSX.utils.sheet_to_json(worksheet, sheetToJsonOptions); 
                         result.push(...jsonData);
                     });
@@ -173,38 +173,31 @@ class GeradorEspecificacoes {
     }
 
     processBudgetData(data) {
-        // Converter nomes de colunas para padrão
-        const processedData = data.map(row => {
-            const processedRow = {};
+        // Filtra e processa dados do orçamento
+        return data.map(item => {
+            // O item 'Código' pode vir como número ou string, normaliza para string
+            const codigo = item.Código ? String(item.Código).trim() : '';
             
-            // Mapear colunas para nomes padrão
-            for (const key in row) {
-                const value = row[key];
-                const lowerKey = key.toLowerCase();
-                
-                if (lowerKey.includes('item')) {
-                    processedRow['Item'] = value !== undefined ? value.toString().trim() : '';
-                } else if (lowerKey.includes('código') || lowerKey.includes('codigo')) {
-                    processedRow['Código'] = value !== undefined ? value.toString().trim() : '';
-                } else if (lowerKey.includes('descrição') || lowerKey.includes('descricao')) {
-                    processedRow['Descrição'] = value !== undefined ? value.toString().trim() : '';
-                } else if (lowerKey.includes('und') || lowerKey.includes('unid')) {
-                    processedRow['Und'] = value !== undefined ? value.toString().trim() : '';
-                } else if (lowerKey.includes('quant') || lowerKey.includes('qtde')) {
-                    processedRow['Quant.'] = value !== undefined ? parseFloat(value) || 0 : 0;
-                } else if (lowerKey.includes('banco')) {
-                    processedRow['Banco'] = value !== undefined ? value.toString().trim() : '';
-                }
-            }
-            
-            return processedRow;
-        }).filter(row => {
-            // Filtrar linhas vazias
-            return row.Item && row.Item.toString().trim() !== '' && 
-                   !row.Item.toString().toLowerCase().includes('total');
-        });
+            // FIX CRÍTICO: Usa a chave 'Quant.' (com ponto) que é a correta no seu Excel
+            const quantidadeValue = item['Quant.']; 
 
-        return processedData;
+            // Assume que só queremos itens que tenham código e descrição
+            // E que o item não seja uma linha de totalizador (que tem Descrição mas não Código)
+            if (codigo && item.Descrição) {
+                // Remove espaços extras e caracteres não-alfanuméricos
+                const cleanedCodigo = codigo.replace(/[^a-zA-Z0-9]/g, ''); 
+                
+                // Retorna um objeto padronizado
+                return {
+                    codigo: cleanedCodigo,
+                    descricao: String(item.Descrição).trim(),
+                    // Converte para float, tratando o separador de milhar/decimal
+                    quantidade: quantidadeValue !== undefined ? parseFloat(String(quantidadeValue).replace(',', '.')) : 0, 
+                    itemOriginal: item 
+                };
+            }
+            return null;
+        }).filter(item => item !== null);
     }
 
     loadLocalDatabase() {
