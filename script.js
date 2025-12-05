@@ -115,12 +115,18 @@ class GeradorEspecificacoes {
         }
     }
 
+    // script.js - Localize a função loadBudgetFromFile(event)
+
     async loadBudgetFromFile(event) {
         const file = event.target.files[0];
         if (!file) return;
-
+    
         try {
-            const data = await this.readExcelFile(file);
+            // FIX: Chamando readExcelFile com a opção { header: 4 }
+            // Isso força a biblioteca a usar a linha 'Item, Código, Banco, Descrição...' 
+            // como cabeçalho.
+            const data = await this.readExcelFile(file, { header: 4 }); 
+            
             this.budgetData = this.processBudgetData(data);
             
             this.showBudgetPreview();
@@ -137,7 +143,9 @@ class GeradorEspecificacoes {
         }
     }
 
-    async readExcelFile(file) {
+    // script.js - Localize esta função
+
+    async readExcelFile(file, sheetToJsonOptions = {}) { // <--- NOVO: Adicionado 'sheetToJsonOptions'
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             
@@ -150,7 +158,8 @@ class GeradorEspecificacoes {
                     const result = [];
                     workbook.SheetNames.forEach(sheetName => {
                         const worksheet = workbook.Sheets[sheetName];
-                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        // NOVO: Usa o parâmetro de opções (para forçar o cabeçalho na linha 4)
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, sheetToJsonOptions); 
                         result.push(...jsonData);
                     });
                     
