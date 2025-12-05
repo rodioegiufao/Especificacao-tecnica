@@ -1,80 +1,89 @@
 class GeradorEspecificacoes {
     constructor() {
         this.baseEspecificacoes = [];
-        this.currentFile = null;
         this.budgetData = [];
+        this.currentPage = 1;
+        this.itemsPerPage = 10;
+        this.currentSearch = '';
+        
         this.initializeEventListeners();
         this.setCurrentDate();
         this.loadLocalDatabase();
     }
 
     initializeEventListeners() {
-        // File upload
-        const fileInput = document.getElementById('file-input');
-        const browseBtn = document.getElementById('browse-btn');
-        const dropArea = document.getElementById('drop-area');
-        const removeFileBtn = document.getElementById('remove-file');
-        const generateBtn = document.getElementById('generate-btn');
+        // Database upload
+        const loadDbBtn = document.getElementById('load-db-btn');
+        const dbFileInput = document.getElementById('db-file-input');
         const viewDbBtn = document.getElementById('view-db-btn');
+        
+        loadDbBtn.addEventListener('click', () => dbFileInput.click());
+        dbFileInput.addEventListener('change', (e) => this.loadDatabaseFromFile(e));
+        viewDbBtn.addEventListener('click', () => this.showDatabaseModal());
+
+        // Budget upload
+        const loadBudgetBtn = document.getElementById('load-budget-btn');
+        const budgetFileInput = document.getElementById('budget-file-input');
+        const clearBudgetBtn = document.getElementById('clear-budget-btn');
+        
+        loadBudgetBtn.addEventListener('click', () => budgetFileInput.click());
+        budgetFileInput.addEventListener('change', (e) => this.loadBudgetFromFile(e));
+        clearBudgetBtn.addEventListener('click', () => this.clearBudget());
+
+        // Generate buttons
+        const generateBtn = document.getElementById('generate-btn');
+        const previewBtn = document.getElementById('preview-btn');
+        const refreshPreviewBtn = document.getElementById('refresh-preview-btn');
+        
+        generateBtn.addEventListener('click', () => this.generateDocument());
+        previewBtn.addEventListener('click', () => this.generatePreview());
+        refreshPreviewBtn.addEventListener('click', () => this.generatePreview());
+
+        // Modal controls
         const closeDbModal = document.getElementById('close-db-modal');
         const dbModal = document.getElementById('db-modal');
         const tabBtns = document.querySelectorAll('.tab-btn');
-        const downloadTemplate = document.getElementById('download-template');
+        const searchInput = document.getElementById('db-search');
+        const prevPageBtn = document.getElementById('prev-page');
+        const nextPageBtn = document.getElementById('next-page');
+        const exportDbBtn = document.getElementById('export-db-btn');
+        const importDbBtn = document.getElementById('import-db-btn');
 
-        browseBtn.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
-        
-        removeFileBtn.addEventListener('click', () => this.removeFile());
-
-        // Drag and drop
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            dropArea.addEventListener(eventName, highlight, false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            dropArea.addEventListener(eventName, unhighlight, false);
-        });
-
-        function highlight() {
-            dropArea.classList.add('drag-over');
-        }
-
-        function unhighlight() {
-            dropArea.classList.remove('drag-over');
-        }
-
-        dropArea.addEventListener('drop', (e) => this.handleDrop(e));
-
-        // Generate document
-        generateBtn.addEventListener('click', () => this.generateDocument());
-
-        // Database modal
-        viewDbBtn.addEventListener('click', () => this.showDatabaseModal());
         closeDbModal.addEventListener('click', () => dbModal.classList.add('hidden'));
-
-        // Tab switching
+        
         tabBtns.forEach(btn => {
             btn.addEventListener('click', () => this.switchTab(btn.dataset.tab));
         });
 
-        // Download template
-        downloadTemplate.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.downloadTemplate();
+        searchInput.addEventListener('input', (e) => {
+            this.currentSearch = e.target.value;
+            this.currentPage = 1;
+            this.updateDatabaseView();
         });
 
-        // Preview toggle
-        const togglePreview = document.getElementById('toggle-preview');
-        togglePreview.addEventListener('click', () => this.togglePreview());
+        prevPageBtn.addEventListener('click', () => {
+            if (this.currentPage > 1) {
+                this.currentPage--;
+                this.updateDatabaseView();
+            }
+        });
+
+        nextPageBtn.addEventListener('click', () => {
+            const totalPages = Math.ceil(this.filteredItems.length / this.itemsPerPage);
+            if (this.currentPage < totalPages) {
+                this.currentPage++;
+                this.updateDatabaseView();
+            }
+        });
+
+        exportDbBtn.addEventListener('click', () => this.exportDatabase());
+        importDbBtn.addEventListener('click', () => {
+            document.getElementById('db-file-input').click();
+        });
+
+        // Download button
+        const downloadBtn = document.getElementById('download-btn');
+        downloadBtn.addEventListener('click', () => this.downloadGeneratedDocument());
     }
 
     setCurrentDate() {
@@ -82,109 +91,49 @@ class GeradorEspecificacoes {
         document.getElementById('project-date').value = today;
     }
 
-    async loadLocalDatabase() {
-        try {
-            // Tentar carregar do localStorage
-            const savedDb = localStorage.getItem('especificacoes_db');
-            if (savedDb) {
-                this.baseEspecificacoes = JSON.parse(savedDb);
-                this.updateDatabaseView();
-                return;
-            }
-
-            // Se não existir, criar uma base de dados de exemplo
-            this.baseEspecificacoes = [
-                {
-                    "COMPOSIÇÃO": "101",
-                    "Banco": "SINAPI",
-                    "DESCRIÇÃO": "CABO DE COBRE ISOLADO PVC 750V - 2,5 MM²",
-                    "ESPECIFICAÇÃO TÉCNICA": "Cabo flexível de cobre, isolamento em PVC 750V/1000V, seção 2,5mm², coloração conforme NBR..."
-                },
-                {
-                    "COMPOSIÇÃO": "102",
-                    "Banco": "SINAPI",
-                    "DESCRIÇÃO": "DISJUNTOR TERMOMAGNÉTICO MONOPOLAR 10A CURVA C",
-                    "ESPECIFICAÇÃO TÉCNICA": "Disjuntor termomagnético DIN, monopolar, corrente nominal 10A, curva C, tensão 127/220V..."
-                },
-                {
-                    "COMPOSIÇÃO": "103",
-                    "Banco": "SINAPI",
-                    "DESCRIÇÃO": "TOMADA 2P+T 10A SOBREPOR",
-                    "ESPECIFICAÇÃO TÉCNICA": "Tomada 2P+T 10A, tipo sobrepor, material policarbonato autoextinguível, bornes de aperto..."
-                }
-            ];
-
-            localStorage.setItem('especificacoes_db', JSON.stringify(this.baseEspecificacoes));
-            this.updateDatabaseView();
-        } catch (error) {
-            console.error('Erro ao carregar base de dados:', error);
-        }
-    }
-
-    updateDatabaseView() {
-        const tbody = document.getElementById('db-tbody');
-        tbody.innerHTML = '';
-
-        this.baseEspecificacoes.forEach(item => {
-            const tr = document.createElement('tr');
-            
-            const compTd = document.createElement('td');
-            compTd.textContent = item.COMPOSIÇÃO;
-            
-            const bancoTd = document.createElement('td');
-            bancoTd.textContent = item.Banco;
-            
-            const descTd = document.createElement('td');
-            descTd.textContent = item.DESCRIÇÃO;
-            
-            const especTd = document.createElement('td');
-            especTd.textContent = item['ESPECIFICAÇÃO TÉCNICA'].substring(0, 100) + '...';
-            especTd.title = item['ESPECIFICAÇÃO TÉCNICA'];
-            
-            tr.appendChild(compTd);
-            tr.appendChild(bancoTd);
-            tr.appendChild(descTd);
-            tr.appendChild(especTd);
-            
-            tbody.appendChild(tr);
-        });
-    }
-
-    handleFileSelect(event) {
+    async loadDatabaseFromFile(event) {
         const file = event.target.files[0];
-        this.processFile(file);
-    }
+        if (!file) return;
 
-    handleDrop(event) {
-        const dt = event.dataTransfer;
-        const file = dt.files[0];
-        this.processFile(file);
-    }
-
-    async processFile(file) {
-        if (!file || !file.name.match(/\.(xlsx|xls)$/i)) {
-            alert('Por favor, selecione um arquivo Excel (.xlsx ou .xls)');
-            return;
-        }
-
-        this.currentFile = file;
-
-        // Mostrar informações do arquivo
-        document.getElementById('file-info').classList.remove('hidden');
-        document.getElementById('file-name').textContent = file.name;
-        document.getElementById('file-size').textContent = this.formatFileSize(file.size);
-
-        // Habilitar botão de gerar
-        document.getElementById('generate-btn').disabled = false;
-
-        // Ler o arquivo Excel
         try {
             const data = await this.readExcelFile(file);
-            this.budgetData = data;
-            this.showDataPreview(data);
+            this.baseEspecificacoes = data;
+            
+            // Salvar no localStorage
+            localStorage.setItem('especificacoes_db', JSON.stringify(this.baseEspecificacoes));
+            localStorage.setItem('db_last_updated', new Date().toISOString());
+            localStorage.setItem('db_name', file.name);
+            
+            this.updateDatabaseStatus(true);
+            this.updateDatabaseInfo();
+            this.updateDatabaseView();
+            
+            alert('Base de dados carregada com sucesso!');
         } catch (error) {
-            console.error('Erro ao processar arquivo:', error);
-            alert('Erro ao processar o arquivo. Verifique se é um Excel válido.');
+            console.error('Erro ao carregar base de dados:', error);
+            alert('Erro ao carregar base de dados. Verifique o formato do arquivo.');
+        }
+    }
+
+    async loadBudgetFromFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            const data = await this.readExcelFile(file);
+            this.budgetData = this.processBudgetData(data);
+            
+            this.showBudgetPreview();
+            this.updateBudgetStatus(true);
+            this.checkReadyToGenerate();
+            
+            // Gerar prévia automática se base estiver carregada
+            if (this.baseEspecificacoes.length > 0) {
+                this.generatePreview();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar orçamento:', error);
+            alert('Erro ao carregar orçamento. Verifique o formato do arquivo.');
         }
     }
 
@@ -197,16 +146,15 @@ class GeradorEspecificacoes {
                     const data = new Uint8Array(e.target.result);
                     const workbook = XLSX.read(data, { type: 'array' });
                     
-                    // Pegar a primeira planilha
-                    const firstSheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[firstSheetName];
+                    // Converter todas as planilhas para JSON
+                    const result = [];
+                    workbook.SheetNames.forEach(sheetName => {
+                        const worksheet = workbook.Sheets[sheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        result.push(...jsonData);
+                    });
                     
-                    // Converter para JSON
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                    
-                    // Processar os dados
-                    const processedData = this.processExcelData(jsonData);
-                    resolve(processedData);
+                    resolve(result);
                 } catch (error) {
                     reject(error);
                 }
@@ -217,116 +165,162 @@ class GeradorEspecificacoes {
         });
     }
 
-    processExcelData(data) {
-        // Encontrar o cabeçalho
-        let headerRow = 0;
-        for (let i = 0; i < Math.min(10, data.length); i++) {
-            const row = data[i];
-            if (row && row.some(cell => 
-                cell && typeof cell === 'string' && 
-                (cell.includes('Item') || cell.includes('Descrição'))
-            )) {
-                headerRow = i;
-                break;
+    processBudgetData(data) {
+        // Converter nomes de colunas para padrão
+        const processedData = data.map(row => {
+            const processedRow = {};
+            
+            // Mapear colunas para nomes padrão
+            for (const key in row) {
+                const value = row[key];
+                const lowerKey = key.toLowerCase();
+                
+                if (lowerKey.includes('item')) {
+                    processedRow['Item'] = value !== undefined ? value.toString().trim() : '';
+                } else if (lowerKey.includes('código') || lowerKey.includes('codigo')) {
+                    processedRow['Código'] = value !== undefined ? value.toString().trim() : '';
+                } else if (lowerKey.includes('descrição') || lowerKey.includes('descricao')) {
+                    processedRow['Descrição'] = value !== undefined ? value.toString().trim() : '';
+                } else if (lowerKey.includes('und') || lowerKey.includes('unid')) {
+                    processedRow['Und'] = value !== undefined ? value.toString().trim() : '';
+                } else if (lowerKey.includes('quant') || lowerKey.includes('qtde')) {
+                    processedRow['Quant.'] = value !== undefined ? parseFloat(value) || 0 : 0;
+                } else if (lowerKey.includes('banco')) {
+                    processedRow['Banco'] = value !== undefined ? value.toString().trim() : '';
+                }
             }
-        }
+            
+            return processedRow;
+        }).filter(row => {
+            // Filtrar linhas vazias
+            return row.Item && row.Item.toString().trim() !== '' && 
+                   !row.Item.toString().toLowerCase().includes('total');
+        });
 
-        // Extrair cabeçalhos
-        const headers = data[headerRow].map(h => h ? h.toString().trim() : '');
-
-        // Mapear colunas
-        const columnMapping = {
-            'Item': headers.findIndex(h => h.includes('Item')),
-            'Código': headers.findIndex(h => h.includes('Código') || h.includes('Codigo')),
-            'Descrição': headers.findIndex(h => h.includes('Descrição') || h.includes('Descricao')),
-            'Und': headers.findIndex(h => h.includes('Und') || h.includes('UNID')),
-            'Quant.': headers.findIndex(h => h.includes('Quant') || h.includes('QTDE')),
-            'Banco': headers.findIndex(h => h.includes('Banco'))
-        };
-
-        // Processar linhas de dados
-        const processed = [];
-        for (let i = headerRow + 1; i < data.length; i++) {
-            const row = data[i];
-            if (!row || row.every(cell => !cell)) continue;
-
-            const item = {
-                'Item': columnMapping['Item'] >= 0 ? this.safeGetCell(row, columnMapping['Item']) : '',
-                'Código': columnMapping['Código'] >= 0 ? this.safeGetCell(row, columnMapping['Código']) : '',
-                'Descrição': columnMapping['Descrição'] >= 0 ? this.safeGetCell(row, columnMapping['Descrição']) : '',
-                'Und': columnMapping['Und'] >= 0 ? this.safeGetCell(row, columnMapping['Und']) : '',
-                'Quant.': columnMapping['Quant.'] >= 0 ? this.safeGetCell(row, columnMapping['Quant.']) : '',
-                'Banco': columnMapping['Banco'] >= 0 ? this.safeGetCell(row, columnMapping['Banco']) : ''
-            };
-
-            // Filtrar linhas vazias ou totais
-            if (item.Item && !item.Item.toString().includes('Total')) {
-                processed.push(item);
-            }
-        }
-
-        return processed;
+        return processedData;
     }
 
-    safeGetCell(row, index) {
-        return row[index] !== undefined && row[index] !== null ? row[index].toString().trim() : '';
+    loadLocalDatabase() {
+        try {
+            const savedDb = localStorage.getItem('especificacoes_db');
+            if (savedDb) {
+                this.baseEspecificacoes = JSON.parse(savedDb);
+                this.updateDatabaseStatus(true);
+                this.updateDatabaseInfo();
+            } else {
+                // Criar base de dados de exemplo se não existir
+                this.createSampleDatabase();
+            }
+        } catch (error) {
+            console.error('Erro ao carregar base local:', error);
+        }
     }
 
-    showDataPreview(data) {
-        const previewSection = document.getElementById('preview-section');
-        const tbody = document.querySelector('#data-preview tbody');
+    createSampleDatabase() {
+        this.baseEspecificacoes = [
+            {
+                "COMPOSIÇÃO": "101",
+                "Banco": "SINAPI",
+                "DESCRIÇÃO": "CABO DE COBRE ISOLADO PVC 750V - 2,5 MM²",
+                "ESPECIFICAÇÃO TÉCNICA": "Cabo flexível de cobre, isolamento em PVC 750V/1000V, seção 2,5mm², coloração conforme NBR 7286. Deve possuir certificado INMETRO e laudo técnico."
+            },
+            {
+                "COMPOSIÇÃO": "102",
+                "Banco": "SINAPI",
+                "DESCRIÇÃO": "DISJUNTOR TERMOMAGNÉTICO MONOPOLAR 10A CURVA C",
+                "ESPECIFICAÇÃO TÉCNICA": "Disjuntor termomagnético DIN, monopolar, corrente nominal 10A, curva C, tensão 127/220V, conforme NBR NM 60898. Deve possuir certificado INMETRO."
+            }
+        ];
         
-        previewSection.classList.remove('hidden');
-        tbody.innerHTML = '';
+        localStorage.setItem('especificacoes_db', JSON.stringify(this.baseEspecificacoes));
+        this.updateDatabaseStatus(true);
+        this.updateDatabaseInfo();
+    }
 
-        // Mostrar apenas as primeiras 10 linhas
-        const displayData = data.slice(0, 10);
+    updateDatabaseStatus(loaded) {
+        const dbStatus = document.getElementById('db-status');
+        const dbInfo = document.querySelector('.db-info');
+        const viewDbBtn = document.getElementById('view-db-btn');
+        const statusDb = document.getElementById('status-db');
         
-        displayData.forEach(item => {
+        if (loaded) {
+            dbStatus.className = 'status-badge status-success';
+            dbStatus.innerHTML = '<i class="fas fa-check-circle"></i> Base Carregada';
+            dbInfo.textContent = `${this.baseEspecificacoes.length} itens disponíveis`;
+            viewDbBtn.disabled = false;
+            statusDb.className = 'status-value status-success';
+            statusDb.innerHTML = '✅ Carregada';
+        } else {
+            dbStatus.className = 'status-badge status-warning';
+            dbStatus.innerHTML = '<i class="fas fa-exclamation-circle"></i> Base Não Carregada';
+            dbInfo.textContent = 'Carregue a base de dados para começar';
+            viewDbBtn.disabled = true;
+            statusDb.className = 'status-value status-error';
+            statusDb.innerHTML = '❌ Não carregada';
+        }
+    }
+
+    updateBudgetStatus(loaded) {
+        const statusBudget = document.getElementById('status-budget');
+        const previewBtn = document.getElementById('preview-btn');
+        
+        if (loaded && this.budgetData.length > 0) {
+            statusBudget.className = 'status-value status-success';
+            statusBudget.innerHTML = `✅ ${this.budgetData.length} itens`;
+            previewBtn.disabled = false;
+        } else {
+            statusBudget.className = 'status-value status-error';
+            statusBudget.innerHTML = '❌ Não carregado';
+            previewBtn.disabled = true;
+        }
+    }
+
+    checkReadyToGenerate() {
+        const generateBtn = document.getElementById('generate-btn');
+        const statusReady = document.getElementById('status-ready');
+        
+        const isReady = this.baseEspecificacoes.length > 0 && this.budgetData.length > 0;
+        
+        if (isReady) {
+            generateBtn.disabled = false;
+            statusReady.className = 'status-value status-success';
+            statusReady.innerHTML = '✅ Pronto';
+        } else {
+            generateBtn.disabled = true;
+            statusReady.className = 'status-value status-error';
+            statusReady.innerHTML = '❌ Aguardando';
+        }
+    }
+
+    showBudgetPreview() {
+        const previewCard = document.getElementById('budget-preview-card');
+        const tableBody = document.querySelector('#budget-preview-table tbody');
+        const itemCount = document.getElementById('budget-item-count');
+        
+        previewCard.classList.remove('hidden');
+        tableBody.innerHTML = '';
+        
+        this.budgetData.slice(0, 20).forEach(item => {
             const tr = document.createElement('tr');
             
-            Object.values(item).forEach(value => {
+            ['Item', 'Código', 'Descrição', 'Und', 'Quant.', 'Banco'].forEach(field => {
                 const td = document.createElement('td');
-                td.textContent = value || '';
+                td.textContent = item[field] || '';
                 tr.appendChild(td);
             });
             
-            tbody.appendChild(tr);
+            tableBody.appendChild(tr);
         });
-
-        // Atualizar contador
-        document.getElementById('item-count').textContent = `${data.length} itens carregados`;
+        
+        itemCount.textContent = `${this.budgetData.length} itens`;
     }
 
-    removeFile() {
-        this.currentFile = null;
+    clearBudget() {
         this.budgetData = [];
-        
-        document.getElementById('file-info').classList.add('hidden');
-        document.getElementById('preview-section').classList.add('hidden');
-        document.getElementById('generate-btn').disabled = true;
-        document.getElementById('file-input').value = '';
-    }
-
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 Bytes';
-        const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    togglePreview() {
-        const previewSection = document.getElementById('preview-section');
-        const toggleBtn = document.getElementById('toggle-preview');
-        
-        if (previewSection.classList.contains('expanded')) {
-            previewSection.classList.remove('expanded');
-            toggleBtn.innerHTML = '<i class="fas fa-expand-alt"></i>';
-        } else {
-            previewSection.classList.add('expanded');
-            toggleBtn.innerHTML = '<i class="fas fa-compress-alt"></i>';
-        }
+        document.getElementById('budget-preview-card').classList.add('hidden');
+        document.getElementById('budget-file-input').value = '';
+        this.updateBudgetStatus(false);
+        this.checkReadyToGenerate();
     }
 
     showDatabaseModal() {
@@ -336,7 +330,6 @@ class GeradorEspecificacoes {
     }
 
     switchTab(tabName) {
-        // Remover classe active de todas as tabs
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.remove('active');
         });
@@ -345,9 +338,240 @@ class GeradorEspecificacoes {
             content.classList.remove('active');
         });
 
-        // Ativar tab selecionada
         document.querySelector(`.tab-btn[data-tab="${tabName}"]`).classList.add('active');
         document.getElementById(`tab-${tabName}`).classList.add('active');
+        
+        if (tabName === 'info') {
+            this.updateDatabaseInfo();
+        }
+    }
+
+    updateDatabaseView() {
+        // Filtrar itens com base na busca
+        this.filteredItems = this.baseEspecificacoes.filter(item => {
+            if (!this.currentSearch) return true;
+            
+            const searchLower = this.currentSearch.toLowerCase();
+            return (
+                (item.COMPOSIÇÃO && item.COMPOSIÇÃO.toLowerCase().includes(searchLower)) ||
+                (item.DESCRIÇÃO && item.DESCRIÇÃO.toLowerCase().includes(searchLower)) ||
+                (item.Banco && item.Banco.toLowerCase().includes(searchLower)) ||
+                (item['ESPECIFICAÇÃO TÉCNICA'] && item['ESPECIFICAÇÃO TÉCNICA'].toLowerCase().includes(searchLower))
+            );
+        });
+
+        // Calcular paginação
+        const totalPages = Math.ceil(this.filteredItems.length / this.itemsPerPage);
+        const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+        const endIndex = startIndex + this.itemsPerPage;
+        const pageItems = this.filteredItems.slice(startIndex, endIndex);
+
+        // Atualizar tabela
+        const tbody = document.getElementById('db-tbody');
+        tbody.innerHTML = '';
+
+        pageItems.forEach(item => {
+            const tr = document.createElement('tr');
+            
+            const compTd = document.createElement('td');
+            compTd.textContent = item.COMPOSIÇÃO || '';
+            
+            const bancoTd = document.createElement('td');
+            bancoTd.textContent = item.Banco || '';
+            
+            const descTd = document.createElement('td');
+            descTd.textContent = item.DESCRIÇÃO || '';
+            
+            const especTd = document.createElement('td');
+            especTd.textContent = (item['ESPECIFICAÇÃO TÉCNICA'] || '').substring(0, 80) + '...';
+            especTd.title = item['ESPECIFICAÇÃO TÉCNICA'] || '';
+            
+            const actionsTd = document.createElement('td');
+            actionsTd.innerHTML = `
+                <button class="btn btn-sm" onclick="gerador.useSpecification('${item.COMPOSIÇÃO}')">
+                    <i class="fas fa-eye"></i>
+                </button>
+            `;
+            
+            tr.appendChild(compTd);
+            tr.appendChild(bancoTd);
+            tr.appendChild(descTd);
+            tr.appendChild(especTd);
+            tr.appendChild(actionsTd);
+            
+            tbody.appendChild(tr);
+        });
+
+        // Atualizar controles de paginação
+        document.getElementById('db-result-count').textContent = 
+            `${this.filteredItems.length} itens encontrados`;
+        
+        document.getElementById('page-info').textContent = 
+            `Página ${this.currentPage} de ${totalPages}`;
+        
+        document.getElementById('prev-page').disabled = this.currentPage <= 1;
+        document.getElementById('next-page').disabled = this.currentPage >= totalPages;
+    }
+
+    updateDatabaseInfo() {
+        document.getElementById('info-total-items').textContent = this.baseEspecificacoes.length;
+        
+        const banks = new Set(this.baseEspecificacoes.map(item => item.Banco).filter(Boolean));
+        document.getElementById('info-banks').textContent = banks.size;
+        
+        const lastUpdate = localStorage.getItem('db_last_updated');
+        if (lastUpdate) {
+            const date = new Date(lastUpdate);
+            document.getElementById('info-last-update').textContent = 
+                date.toLocaleDateString('pt-BR');
+        }
+        
+        // Calcular tamanho aproximado
+        const dbSize = JSON.stringify(this.baseEspecificacoes).length;
+        document.getElementById('info-db-size').textContent = 
+            `${(dbSize / 1024).toFixed(2)} KB`;
+    }
+
+    useSpecification(composicao) {
+        const spec = this.baseEspecificacoes.find(item => item.COMPOSIÇÃO === composicao);
+        if (spec) {
+            alert(`Especificação: ${spec['ESPECIFICAÇÃO TÉCNICA'].substring(0, 200)}...`);
+        }
+    }
+
+    async generatePreview() {
+        if (this.budgetData.length === 0) {
+            alert('Carregue um orçamento primeiro.');
+            return;
+        }
+
+        const container = document.getElementById('spec-preview-container');
+        container.innerHTML = '<div class="loading">Gerando prévia...</div>';
+        
+        document.getElementById('spec-preview-card').classList.remove('hidden');
+
+        try {
+            const previewItems = this.budgetData.slice(0, 5);
+            let html = '';
+            
+            previewItems.forEach((item, index) => {
+                const spec = this.getSpecification(item);
+                html += `
+                    <div class="spec-item">
+                        <h4>${item.Item} - ${item.Descrição}</h4>
+                        <div class="spec-content">
+                            ${spec.split('\n').map(line => `<p>${line}</p>`).join('')}
+                        </div>
+                        <div class="spec-meta">
+                            <span>Código: ${item.Código || 'N/A'}</span>
+                            <span>Quantidade: ${item['Quant.']} ${item.Und}</span>
+                        </div>
+                    </div>
+                `;
+                
+                if (index < previewItems.length - 1) {
+                    html += '<hr>';
+                }
+            });
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Erro ao gerar prévia:', error);
+            container.innerHTML = '<p class="error">Erro ao gerar prévia.</p>';
+        }
+    }
+
+    getSpecification(item) {
+        // Primeiro tenta buscar da base de dados
+        let especificacao = this.getSpecificationFromDatabase(item);
+        
+        if (!especificacao) {
+            // Se não encontrou, gera baseado na descrição
+            especificacao = this.generateSpecificationFromDescription(item);
+        }
+        
+        return especificacao;
+    }
+
+    getSpecificationFromDatabase(item) {
+        // Buscar por código
+        if (item.Código) {
+            const found = this.baseEspecificacoes.find(dbItem => 
+                dbItem.COMPOSIÇÃO.toString() === item.Código.toString()
+            );
+            if (found) return found['ESPECIFICAÇÃO TÉCNICA'];
+        }
+
+        // Buscar por descrição
+        if (item.Descrição) {
+            const descClean = item.Descrição.split('(')[0].split('-')[0].split('AF_')[0].trim();
+            const found = this.baseEspecificacoes.find(dbItem => 
+                dbItem.DESCRIÇÃO && dbItem.DESCRIÇÃO.toLowerCase().includes(descClean.toLowerCase())
+            );
+            if (found) return found['ESPECIFICAÇÃO TÉCNICA'];
+        }
+
+        return null;
+    }
+
+    generateSpecificationFromDescription(item) {
+        const descUpper = item.Descrição.toUpperCase();
+        
+        if (descUpper.includes('CABO') && descUpper.includes('COBRE')) {
+            return this.generateCableSpecification(item);
+        } else if (descUpper.includes('DISJUNTOR')) {
+            return this.generateBreakerSpecification(item);
+        } else if (descUpper.includes('QUADRO') && descUpper.includes('ENERGIA')) {
+            return this.generatePanelSpecification(item);
+        } else if (descUpper.includes('TOMADA')) {
+            return this.generateOutletSpecification(item);
+        } else if (descUpper.includes('INTERRUPTOR')) {
+            return this.generateSwitchSpecification(item);
+        } else {
+            return this.generateDefaultSpecification(item);
+        }
+    }
+
+    generateCableSpecification(item) {
+        return `CABO DE COBRE - Deve ser cabo flexível de cobre eletrolítico, isolamento em PVC 750V/1000V, conforme NBR 7286. 
+        Bitola conforme especificado em projeto. Todos os materiais devem ser novos e de primeira qualidade. 
+        Deve possuir certificado de garantia e laudos técnicos quando aplicável. 
+        Quantidade: ${item['Quant.']} ${item.Und}.`;
+    }
+
+    generateBreakerSpecification(item) {
+        return `DISJUNTOR - Disjuntor termomagnético DIN, curva C, conforme NBR NM 60898. 
+        Deve possuir certificado INMETRO. Tensão nominal 127/220V - 60Hz. 
+        Todos os materiais devem ser novos e de primeira qualidade. 
+        Quantidade: ${item['Quant.']} ${item.Und}.`;
+    }
+
+    generatePanelSpecification(item) {
+        return `QUADRO DE DISTRIBUIÇÃO - Quadro em chapa de aço galvanizado, pintura epóxi eletrostática. 
+        Conforme NBR IEC 61439-1. Deve incluir barramentos em cobre, trilhos DIN e sistema de aterramento. 
+        Todos os materiais devem ser novos e de primeira qualidade. 
+        Quantidade: ${item['Quant.']} ${item.Und}.`;
+    }
+
+    generateOutletSpecification(item) {
+        return `TOMADA ELÉTRICA - Tomada 2P+T 10A, material policarbonato autoextinguível. 
+        Conforme NBR 14136. Bornes de aperto torque controlado. 
+        Todos os materiais devem ser novos e de primeira qualidade. 
+        Quantidade: ${item['Quant.']} ${item.Und}.`;
+    }
+
+    generateSwitchSpecification(item) {
+        return `INTERRUPTOR - Interruptor simples 10A, material policarbonato autoextinguível. 
+        Conforme NBR 14136. Deve suportar no mínimo 40.000 ciclos de acionamento. 
+        Todos os materiais devem ser novos e de primeira qualidade. 
+        Quantidade: ${item['Quant.']} ${item.Und}.`;
+    }
+
+    generateDefaultSpecification(item) {
+        return `O item ${item.Descrição} deve ser fornecido e instalado conforme especificações técnicas do fabricante 
+        e normas técnicas aplicáveis, em especial a NBR 5410. Deve possuir certificado de garantia e laudos técnicos quando aplicável. 
+        Todos os materiais devem ser novos e de primeira qualidade. 
+        Quantidade: ${item['Quant.']} ${item.Und}.`;
     }
 
     async generateDocument() {
@@ -356,30 +580,32 @@ class GeradorEspecificacoes {
             return;
         }
 
+        const format = document.querySelector('input[name="format"]:checked').value;
         const projectName = document.getElementById('project-name').value || 'Projeto Elétrico';
-        const generateBtn = document.getElementById('generate-btn');
-        const progressContainer = document.getElementById('progress-container');
-        const progressFill = document.getElementById('progress-fill');
-        const progressText = document.getElementById('progress-text');
+        const projectCode = document.getElementById('project-code').value || '';
+        const clientName = document.getElementById('client-name').value || '';
+        const date = document.getElementById('project-date').value;
+        const formattedDate = date ? new Date(date).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
 
         // Mostrar progresso
-        generateBtn.disabled = true;
-        progressContainer.classList.remove('hidden');
+        this.showProgress(true);
 
         try {
-            // Simular progresso
-            for (let i = 0; i <= 100; i += 10) {
-                await this.sleep(100);
-                progressFill.style.width = `${i}%`;
-                progressText.textContent = `${i}%`;
+            let content, fileName;
+            
+            if (format === 'docx') {
+                // Gerar documento Word
+                fileName = `Especificacoes_Tecnicas_${projectName.replace(/\s+/g, '_')}.docx`;
+                content = await this.generateWordDocument(projectName, projectCode, clientName, formattedDate);
+            } else {
+                // Gerar arquivo TXT
+                fileName = `Especificacoes_Tecnicas_${projectName.replace(/\s+/g, '_')}.txt`;
+                content = this.generateTextDocument(projectName, projectCode, clientName, formattedDate);
             }
 
-            // Gerar conteúdo do documento
-            const docContent = this.generateDocumentContent(projectName);
-
-            // Criar e baixar o documento
-            const fileName = `Especificacoes_Tecnicas_${projectName.replace(/\s+/g, '_')}.docx`;
-            this.createAndDownloadDoc(docContent, fileName);
+            // Salvar conteúdo gerado
+            this.generatedContent = content;
+            this.generatedFileName = fileName;
 
             // Mostrar seção de download
             this.showDownloadSection(fileName);
@@ -388,53 +614,63 @@ class GeradorEspecificacoes {
             console.error('Erro ao gerar documento:', error);
             alert('Erro ao gerar documento. Tente novamente.');
         } finally {
-            generateBtn.disabled = false;
+            this.showProgress(false);
         }
     }
 
-    generateDocumentContent(projectName) {
-        const date = document.getElementById('project-date').value;
-        const formattedDate = date ? new Date(date).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR');
-
-        let content = `ESPECIFICAÇÕES TÉCNICAS\n\n`;
+    generateTextDocument(projectName, projectCode, clientName, date) {
+        let content = '='.repeat(80) + '\n';
+        content += 'ESPECIFICAÇÕES TÉCNICAS\n';
+        content += '='.repeat(80) + '\n\n';
+        
+        if (projectCode) content += `Código do Projeto: ${projectCode}\n`;
         content += `Projeto: ${projectName}\n`;
-        content += `Data de emissão: ${formattedDate}\n\n`;
+        if (clientName) content += `Cliente: ${clientName}\n`;
+        content += `Data de emissão: ${date}\n`;
+        content += '-'.repeat(80) + '\n\n';
+        
         content += `Este documento contém as especificações técnicas dos materiais e equipamentos `;
         content += `previstos no orçamento, baseadas nas descrições dos itens e normas técnicas aplicáveis.\n\n`;
+        content += '-'.repeat(80) + '\n\n';
 
         // Organizar itens por hierarquia
-        const organizedItems = this.organizeItemsByHierarchy(this.budgetData);
+        const organizedItems = this.organizeItemsByHierarchy();
 
         organizedItems.forEach((item, index) => {
             const nivel = item.nivel || 0;
-            const indent = '  '.repeat(nivel);
+            const indent = '  '.repeat(nivel * 2);
             
-            content += `\n${indent}${item.Item} - ${item.Descrição}\n`;
+            content += `${indent}${item.Item} - ${item.Descrição}\n`;
             
-            // Adicionar especificação apenas para itens de nível mais baixo
             if (this.isLowestLevelItem(item, organizedItems)) {
                 content += `${indent}Código: ${item.Código || 'Não informado'} | `;
                 content += `Banco: ${item.Banco || 'Não informado'} | `;
                 content += `Quantidade: ${item['Quant.'] || 'N/A'} ${item.Und || 'N/A'}\n`;
                 
                 const especificacao = this.getSpecification(item);
-                content += `${indent}${especificacao}\n`;
+                content += `${indent}${especificacao.replace(/\n/g, '\n' + indent)}\n\n`;
             }
         });
+
+        content += '\n' + '='.repeat(80) + '\n';
+        content += 'FIM DO DOCUMENTO\n';
+        content += '='.repeat(80) + '\n';
 
         return content;
     }
 
-    organizeItemsByHierarchy(data) {
-        // Adicionar nível hierárquico baseado no número de pontos
-        const itemsWithLevel = data.map(item => {
+    async generateWordDocument(projectName, projectCode, clientName, date) {
+        // Nota: Esta é uma implementação simplificada
+        // Para uma implementação completa, use a biblioteca docx
+        return this.generateTextDocument(projectName, projectCode, clientName, date);
+    }
+
+    organizeItemsByHierarchy() {
+        return this.budgetData.map(item => {
             const itemStr = item.Item.toString();
             const nivel = itemStr.split('.').length - 1;
             return { ...item, nivel };
-        });
-
-        // Ordenar pela hierarquia
-        itemsWithLevel.sort((a, b) => {
+        }).sort((a, b) => {
             const aParts = a.Item.split('.').map(Number);
             const bParts = b.Item.split('.').map(Number);
             
@@ -445,8 +681,6 @@ class GeradorEspecificacoes {
             }
             return 0;
         });
-
-        return itemsWithLevel;
     }
 
     isLowestLevelItem(item, items) {
@@ -454,147 +688,65 @@ class GeradorEspecificacoes {
         return !items.some(other => other.Item.startsWith(itemPrefix));
     }
 
-    getSpecification(item) {
-        // Primeiro tenta buscar da base de dados
-        const fromDb = this.getSpecificationFromDatabase(item);
-        if (fromDb) return fromDb;
-
-        // Se não encontrou, gera baseado na descrição
-        const descricao = item.Descrição.toUpperCase();
+    showProgress(show) {
+        const progressContainer = document.getElementById('progress-container');
+        const generateBtn = document.getElementById('generate-btn');
         
-        if (descricao.includes('CABO')) {
-            return this.generateCableSpecification(item);
-        } else if (descricao.includes('DISJUNTOR')) {
-            return this.generateBreakerSpecification(item);
-        } else if (descricao.includes('QUADRO')) {
-            return this.generatePanelSpecification(item);
-        } else if (descricao.includes('TOMADA')) {
-            return this.generateOutletSpecification(item);
-        } else if (descricao.includes('INTERRUPTOR')) {
-            return this.generateSwitchSpecification(item);
+        if (show) {
+            progressContainer.classList.remove('hidden');
+            generateBtn.disabled = true;
+            
+            // Simular progresso
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += 10;
+                document.getElementById('progress-fill').style.width = `${progress}%`;
+                document.getElementById('progress-percent').textContent = `${progress}%`;
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                }
+            }, 200);
         } else {
-            return this.generateDefaultSpecification(item);
+            progressContainer.classList.add('hidden');
+            generateBtn.disabled = false;
         }
-    }
-
-    getSpecificationFromDatabase(item) {
-        // Buscar por código
-        if (item.Código) {
-            const found = this.baseEspecificacoes.find(dbItem => 
-                dbItem.COMPOSIÇÃO === item.Código.toString()
-            );
-            if (found) return found['ESPECIFICAÇÃO TÉCNICA'];
-        }
-
-        // Buscar por descrição
-        if (item.Descrição) {
-            const descClean = item.Descrição.split('(')[0].split('-')[0].trim();
-            const found = this.baseEspecificacoes.find(dbItem => 
-                dbItem.DESCRIÇÃO.toLowerCase().includes(descClean.toLowerCase())
-            );
-            if (found) return found['ESPECIFICAÇÃO TÉCNICA'];
-        }
-
-        return null;
-    }
-
-    generateCableSpecification(item) {
-        return `Cabo de cobre flexível, isolamento em PVC 750V/1000V, conforme NBR 7286. 
-        Deve possuir certificado de garantia e laudos técnicos. 
-        Quantidade: ${item['Quant.']} ${item.Und}.`;
-    }
-
-    generateBreakerSpecification(item) {
-        return `Disjuntor termomagnético DIN, conforme NBR NM 60898. 
-        Deve possuir certificado INMETRO. 
-        Quantidade: ${item['Quant.']} ${item.Und}.`;
-    }
-
-    generatePanelSpecification(item) {
-        return `Quadro de distribuição em chapa de aço galvanizado, pintura epóxi. 
-        Conforme NBR IEC 61439-1. 
-        Quantidade: ${item['Quant.']} ${item.Und}.`;
-    }
-
-    generateOutletSpecification(item) {
-        return `Tomada 2P+T 10A, material policarbonato autoextinguível. 
-        Conforme NBR 14136. 
-        Quantidade: ${item['Quant.']} ${item.Und}.`;
-    }
-
-    generateSwitchSpecification(item) {
-        return `Interruptor simples 10A, material policarbonato autoextinguível. 
-        Conforme NBR 14136. 
-        Quantidade: ${item['Quant.']} ${item.Und}.`;
-    }
-
-    generateDefaultSpecification(item) {
-        return `O item ${item.Descrição} deve ser fornecido e instalado conforme especificações 
-        técnicas do fabricante e normas técnicas aplicáveis, em especial a NBR 5410. 
-        Deve possuir certificado de garantia. 
-        Quantidade: ${item['Quant.']} ${item.Und}.`;
-    }
-
-    createAndDownloadDoc(content, fileName) {
-        // Para uma implementação real, você precisaria de uma biblioteca
-        // como docx.js ou fazer uma requisição para um backend que gera o DOCX
-        // Esta é uma versão simplificada que cria um arquivo TXT
-        
-        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-        saveAs(blob, fileName);
     }
 
     showDownloadSection(fileName) {
         const downloadSection = document.getElementById('download-section');
         const generatedFileName = document.getElementById('generated-file-name');
-        const downloadBtn = document.getElementById('download-btn');
-        const progressContainer = document.getElementById('progress-container');
-
-        // Esconder barra de progresso
-        progressContainer.classList.add('hidden');
-
-        // Mostrar seção de download
+        const downloadStats = document.getElementById('download-stats');
+        
         downloadSection.classList.remove('hidden');
         generatedFileName.textContent = `Arquivo: ${fileName}`;
-
-        // Configurar botão de download
-        downloadBtn.onclick = () => {
-            const content = this.generateDocumentContent(
-                document.getElementById('project-name').value || 'Projeto Elétrico'
-            );
-            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-            saveAs(blob, fileName);
-        };
+        downloadStats.textContent = `${this.budgetData.length} itens processados`;
     }
 
-    downloadTemplate() {
-        // Criar dados de exemplo para o template
-        const templateData = [
-            ['Item', 'Código', 'Descrição', 'Und', 'Quant.', 'Banco'],
-            ['1', '101', 'CABO DE COBRE ISOLADO PVC 750V - 2,5 MM²', 'm', '100', 'SINAPI'],
-            ['1.1', '102', 'DISJUNTOR TERMOMAGNÉTICO MONOPOLAR 10A CURVA C', 'un', '5', 'SINAPI'],
-            ['1.2', '103', 'TOMADA 2P+T 10A SOBREPOR', 'un', '20', 'SINAPI'],
-            ['2', '201', 'QUADRO DE DISTRIBUIÇÃO 12 DISJUNTORES', 'un', '2', 'SINAPI'],
-            ['2.1', '202', 'INTERRUPTOR SIMPLES 10A', 'un', '15', 'SINAPI']
-        ];
-
-        // Criar worksheet
-        const ws = XLSX.utils.aoa_to_sheet(templateData);
+    downloadGeneratedDocument() {
+        if (!this.generatedContent || !this.generatedFileName) return;
         
-        // Criar workbook
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Orçamento");
-
-        // Gerar arquivo
-        XLSX.writeFile(wb, "Template_Orcamento.xlsx");
+        const blob = new Blob([this.generatedContent], { 
+            type: this.generatedFileName.endsWith('.docx') ? 
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 
+                'text/plain;charset=utf-8' 
+        });
+        
+        saveAs(blob, this.generatedFileName);
     }
 
-    sleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    exportDatabase() {
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.json_to_sheet(this.baseEspecificacoes);
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Base de Dados");
+        
+        const fileName = `BASE_DE_DADOS_ESPECIFICACAO_TECNICA_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(workbook, fileName);
     }
 }
 
-// Inicializar aplicação quando o DOM estiver carregado
+// Instanciar o gerador quando o DOM estiver carregado
+let gerador;
 document.addEventListener('DOMContentLoaded', () => {
-    new GeradorEspecificacoes();
+    gerador = new GeradorEspecificacoes();
 });
