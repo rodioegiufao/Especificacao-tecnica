@@ -280,7 +280,40 @@ class GeradorEspecificacoes {
             return null;
         }).filter(item => item !== null && item.quantidade > 0); 
     }
-
+    // --- Métodos de Notificação de UI ---
+    setMessage(message, type = 'info') {
+        const statusElement = document.getElementById('global-status-message');
+        if (!statusElement) {
+            console.log(`STATUS [${type.toUpperCase()}]: ${message}`);
+            return;
+        }
+        
+        statusElement.textContent = message;
+        statusElement.className = 'status-message';
+        
+        // Define a classe CSS baseada no tipo (para cores/estilos)
+        if (type === 'success') {
+            statusElement.classList.add('status-success');
+        } else if (type === 'error') {
+            statusElement.classList.add('status-error');
+        } else if (type === 'loading') {
+            statusElement.classList.add('status-loading');
+        }
+        
+        // Opcional: Limpar a mensagem após alguns segundos (exceto para 'loading')
+        if (type !== 'loading') {
+            setTimeout(() => {
+                statusElement.textContent = '';
+                statusElement.className = 'status-message';
+            }, 5000);
+        }
+    }
+    
+    showError(message) {
+        this.setMessage(message, 'error');
+    }
+    
+    // ------------------------------------
     loadLocalDatabase() {
         try {
             const savedDb = localStorage.getItem('especificacoes_db');
