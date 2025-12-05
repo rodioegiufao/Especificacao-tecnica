@@ -91,36 +91,37 @@ class GeradorEspecificacoes {
         document.getElementById('project-date').value = today;
     }
 
-    async loadDatabaseFromFile(event) {
+    // Recomenda-se aplicar o mesmo FIX de contexto aqui
+    loadDatabaseFromFile = async (event) => {
         const file = event.target.files[0];
         if (!file) return;
 
+        this.setMessage('Carregando base de dados...', 'loading');
+
         try {
-            const data = await this.readExcelFile(file);
+            // Se você ainda tem uma função readExcelFile, chame-a aqui. 
+            // Caso contrário, use a lógica de leitura padrão do XLSX.
+            const data = await this.readExcelFile(file); // Assume que você tem a função readExcelFile
+
             this.baseEspecificacoes = data;
-            
-            // Salvar no localStorage
-            localStorage.setItem('especificacoes_db', JSON.stringify(this.baseEspecificacoes));
-            localStorage.setItem('db_last_updated', new Date().toISOString());
-            localStorage.setItem('db_name', file.name);
-            
-            this.updateDatabaseStatus(true);
-            this.updateDatabaseInfo();
-            this.updateDatabaseView();
-            
-            alert('Base de dados carregada com sucesso!');
+            this.saveLocalDatabase();
+            this.showDatabaseStatus();
+            this.setMessage(`Base de dados carregada com sucesso! ${data.length} itens.`, 'success');
+            this.checkReadyToGenerate();
         } catch (error) {
             console.error('Erro ao carregar base de dados:', error);
-            alert('Erro ao carregar base de dados. Verifique o formato do arquivo.');
+            this.showError('Erro ao carregar base de dados. Verifique se o arquivo está no formato correto (cabeçalho na primeira linha).');
         }
     }
 
     // script.js - Localize a função loadBudgetFromFile(event)
 
-    async loadBudgetFromFile(event) {
+    // FIX DE CONTEXTO: Definida como arrow function para manter o 'this'
+    loadBudgetFromFile = async (event) => { 
         const file = event.target.files[0];
         if (!file) return;
 
+        // Linha onde o erro estava ocorrendo
         this.setMessage('Processando arquivo de orçamento...', 'loading');
 
         try {
@@ -140,7 +141,7 @@ class GeradorEspecificacoes {
             let start_row = 1; // 1-indexed (XLSX.js)
             const max_rows_to_check = 10;
             
-            // Lê as primeiras linhas como um array de arrays para checar os títulos
+            // Lê as primeiras linhas para checar os títulos (como o Python lê as primeiras 10)
             const sheet_data = XLSX.utils.sheet_to_json(worksheet, { 
                 header: 1, 
                 range: 'A1:Z' + max_rows_to_check, 
@@ -152,13 +153,10 @@ class GeradorEspecificacoes {
                 const row = sheet_data[i];
                 if (row && row.length > 0) {
                     const first_cell = String(row[0] || '').trim();
-                    // Busca por 'Descrição' ou 'Descricao' em qualquer coluna da linha
                     const contains_desc = row.some(cell => String(cell || '').includes('Descrição') || String(cell || '').includes('Descricao'));
                     
-                    // Condição: 'Item' na primeira célula E 'Descrição' em algum lugar da linha
                     if (first_cell === 'Item' && contains_desc) {
-                        // i é 0-indexed, o cabeçalho do XLSX é 1-indexed
-                        start_row = i + 1; 
+                        start_row = i + 1; // i é 0-indexed, o cabeçalho do XLSX é 1-indexed
                         break;
                     }
                 }
@@ -166,8 +164,8 @@ class GeradorEspecificacoes {
             
             // 3. CONVERTE PARA JSON usando a linha de cabeçalho encontrada
             const rawBudgetData = XLSX.utils.sheet_to_json(worksheet, { 
-                header: start_row, // Usa a linha dinâmica
-                raw: false // Garante que os valores vêm como strings/números formatados
+                header: start_row, 
+                raw: false 
             });
             
             // 4. PROCESSA/MAPEIA DADOS (usando a função robusta)
@@ -182,7 +180,6 @@ class GeradorEspecificacoes {
             this.checkReadyToGenerate();
             this.setMessage(`Orçamento carregado com sucesso! ${this.budgetData.length} itens encontrados.`, 'success');
             
-            // Gerar prévia automática se base estiver carregada
             if (this.baseEspecificacoes.length > 0) {
                 this.generatePreview();
             }
@@ -225,7 +222,6 @@ class GeradorEspecificacoes {
 
     processBudgetData(data) {
         // Mapeamento flexível de chaves (simulando a lógica do Python)
-        // A ordem é importante: a primeira chave encontrada será usada.
         const keyMap = {
             'Código': ['Código', 'Codigo'],
             'Descrição': ['Descrição', 'Descricao'],
@@ -235,7 +231,6 @@ class GeradorEspecificacoes {
             'Und': ['Und', 'UNID']
         };
 
-        // Função auxiliar para encontrar o valor correto dada uma lista de possíveis chaves
         const findKey = (item, potentialKeys) => {
             for (const key of potentialKeys) {
                 if (item.hasOwnProperty(key)) {
@@ -245,9 +240,7 @@ class GeradorEspecificacoes {
             return undefined;
         };
 
-        // Filtra e processa dados do orçamento
         return data.map(item => {
-            // Usa o mapeamento flexível para obter os valores
             const itemValue = findKey(item, keyMap['Item']);
             const codigoValue = findKey(item, keyMap['Código']);
             const descricaoValue = findKey(item, keyMap['Descrição']);
@@ -265,20 +258,15 @@ class GeradorEspecificacoes {
             
             // 2. Filtro principal (Deve ter Código e Descrição)
             if (codigo && descricao) {
-                // Limpeza do Código (remove caracteres não-alfanuméricos)
                 const cleanedCodigo = codigo.replace(/[^a-zA-Z0-9]/g, ''); 
                 
-                // Processamento da Quantidade
                 let quantidade = 0;
                 if (quantidadeValue !== undefined && quantidadeValue !== null) {
-                    // Tenta converter para float, tratando o separador decimal (se for string)
                     let quantStr = String(quantidadeValue);
-                    // Remove ponto como separador de milhar e usa ponto como decimal (se houver vírgula)
                     quantStr = quantStr.replace(/\./g, '').replace(',', '.'); 
                     quantidade = parseFloat(quantStr) || 0;
                 }
                 
-                // Retorna o objeto padronizado
                 return {
                     item: String(itemValue).trim(),
                     codigo: cleanedCodigo,
@@ -290,7 +278,7 @@ class GeradorEspecificacoes {
                 };
             }
             return null;
-        }).filter(item => item !== null && item.quantidade > 0); // Filtra itens nulos e com quantidade zero
+        }).filter(item => item !== null && item.quantidade > 0); 
     }
 
     loadLocalDatabase() {
