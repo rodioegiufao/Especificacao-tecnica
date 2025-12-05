@@ -221,30 +221,43 @@ class GeradorEspecificacoes {
     }
 
     processBudgetData(data) {
-        // Mapeamento flexível de chaves (simulando a lógica do Python)
-        const keyMap = {
-            'Código': ['Código', 'Codigo'],
-            'Descrição': ['Descrição', 'Descricao'],
-            'Quant.': ['Quant.', 'Quant', 'QTDE', 'Quantidade'], 
-            'Item': ['Item'],
-            'Banco': ['Banco'],
-            'Und': ['Und', 'UNID']
+        // Mapeamento flexível de chaves, permitindo variações
+        const targetKeyMap = {
+            'Item': ['item', 'nº'],
+            'Código': ['código', 'codigo', 'composicao', 'comp'],
+            'Descrição': ['descrição', 'descricao', 'serviço'],
+            'Quant.': ['quant', 'quant.', 'qtde', 'quantidade'], 
+            'Banco': ['banco', 'origem'],
+            'Und': ['und', 'unid', 'unidade']
         };
 
+        // Função para encontrar o valor no objeto (item) com base nas possíveis chaves (potentialKeys)
         const findKey = (item, potentialKeys) => {
-            for (const key of potentialKeys) {
-                if (item.hasOwnProperty(key)) {
-                    return item[key];
+            const itemKeys = Object.keys(item);
+            
+            for (const target of potentialKeys) {
+                // Remove espaços e pontuação para comparação
+                const cleanedTarget = target.toLowerCase().replace(/[\s\.]/g, ''); 
+                
+                for (const itemKey of itemKeys) {
+                    const cleanedItemKey = itemKey.toLowerCase().replace(/[\s\.]/g, '');
+                    
+                    if (cleanedItemKey.includes(cleanedTarget)) {
+                        return item[itemKey];
+                    }
                 }
             }
             return undefined;
         };
 
         return data.map(item => {
-            const itemValue = findKey(item, keyMap['Item']);
-            const codigoValue = findKey(item, keyMap['Código']);
-            const descricaoValue = findKey(item, keyMap['Descrição']);
-            const quantidadeValue = findKey(item, keyMap['Quant.']);
+            // Se o item for um objeto vazio, pule
+            if (Object.keys(item).length === 0) return null;
+
+            const itemValue = findKey(item, targetKeyMap['Item']);
+            const codigoValue = findKey(item, targetKeyMap['Código']);
+            const descricaoValue = findKey(item, targetKeyMap['Descrição']);
+            const quantidadeValue = findKey(item, targetKeyMap['Quant.']);
             
             const codigo = codigoValue ? String(codigoValue).trim() : '';
             const descricao = descricaoValue ? String(descricaoValue).trim() : '';
@@ -252,7 +265,8 @@ class GeradorEspecificacoes {
             // 1. Filtros (Remove linhas vazias, nulas ou totais, como no Python)
             if (!itemValue || 
                 String(itemValue).toLowerCase().includes('total') || 
-                String(itemValue).toLowerCase().includes('nan')) {
+                String(itemValue).toLowerCase().includes('nan') ||
+                String(itemValue).trim() === '') {
                 return null;
             }
             
@@ -263,22 +277,24 @@ class GeradorEspecificacoes {
                 let quantidade = 0;
                 if (quantidadeValue !== undefined && quantidadeValue !== null) {
                     let quantStr = String(quantidadeValue);
+                    // Lida com formato numérico do XLSX.js ou string formatada
                     quantStr = quantStr.replace(/\./g, '').replace(',', '.'); 
                     quantidade = parseFloat(quantStr) || 0;
                 }
                 
+                // Mapeamento final para o objeto de saída
                 return {
-                    item: String(itemValue).trim(),
-                    codigo: cleanedCodigo,
-                    descricao: descricao,
-                    banco: findKey(item, keyMap['Banco']) || '',
-                    und: findKey(item, keyMap['Und']) || '',
-                    quantidade: quantidade, 
+                    Item: String(itemValue).trim(), // Preserva a chave Item para hierarquia
+                    Código: cleanedCodigo,
+                    Descrição: descricao,
+                    Banco: findKey(item, targetKeyMap['Banco']) || '',
+                    Und: findKey(item, targetKeyMap['Und']) || '',
+                    'Quant.': quantidade, // Preserva a chave Quant. para uso posterior
                     itemOriginal: item 
                 };
             }
             return null;
-        }).filter(item => item !== null && item.quantidade > 0); 
+        }).filter(item => item !== null && item['Quant.'] > 0); 
     }
     // --- Métodos de Notificação de UI ---
     setMessage(message, type = 'info') {
