@@ -121,15 +121,66 @@ class GeradorEspecificacoes {
         const file = event.target.files[0];
         if (!file) return;
 
+        this.setMessage('Processando arquivo de orçamento...', 'loading');
+
         try {
-            // FIX: Passa { header: 4 } para forçar a leitura do cabeçalho na 4ª linha
-            const data = await this.readExcelFile(file, { header: 4 }); 
+            // 1. Lê o arquivo binário
+            const data = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
             
-            this.budgetData = this.processBudgetData(data);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const sheetName = workbook.SheetNames[0]; // Assume a primeira planilha
+            const worksheet = workbook.Sheets[sheetName];
+
+            // 2. DETECÇÃO DINÂMICA DO CABEÇALHO (Simulando a lógica do Python)
+            let start_row = 1; // 1-indexed (XLSX.js)
+            const max_rows_to_check = 10;
             
+            // Lê as primeiras linhas como um array de arrays para checar os títulos
+            const sheet_data = XLSX.utils.sheet_to_json(worksheet, { 
+                header: 1, 
+                range: 'A1:Z' + max_rows_to_check, 
+                raw: false 
+            });
+
+            // Procura a linha que contém "Item" e "Descrição"
+            for (let i = 0; i < sheet_data.length; i++) {
+                const row = sheet_data[i];
+                if (row && row.length > 0) {
+                    const first_cell = String(row[0] || '').trim();
+                    // Busca por 'Descrição' ou 'Descricao' em qualquer coluna da linha
+                    const contains_desc = row.some(cell => String(cell || '').includes('Descrição') || String(cell || '').includes('Descricao'));
+                    
+                    // Condição: 'Item' na primeira célula E 'Descrição' em algum lugar da linha
+                    if (first_cell === 'Item' && contains_desc) {
+                        // i é 0-indexed, o cabeçalho do XLSX é 1-indexed
+                        start_row = i + 1; 
+                        break;
+                    }
+                }
+            }
+            
+            // 3. CONVERTE PARA JSON usando a linha de cabeçalho encontrada
+            const rawBudgetData = XLSX.utils.sheet_to_json(worksheet, { 
+                header: start_row, // Usa a linha dinâmica
+                raw: false // Garante que os valores vêm como strings/números formatados
+            });
+            
+            // 4. PROCESSA/MAPEIA DADOS (usando a função robusta)
+            this.budgetData = this.processBudgetData(rawBudgetData);
+            
+            if (this.budgetData.length === 0) {
+                 throw new Error("O arquivo foi lido, mas não contém itens válidos ou as colunas esperadas não foram encontradas. Verifique as colunas 'Item', 'Código' e 'Quant.'.");
+            }
+
             this.showBudgetPreview();
             this.updateBudgetStatus(true);
             this.checkReadyToGenerate();
+            this.setMessage(`Orçamento carregado com sucesso! ${this.budgetData.length} itens encontrados.`, 'success');
             
             // Gerar prévia automática se base estiver carregada
             if (this.baseEspecificacoes.length > 0) {
@@ -137,7 +188,7 @@ class GeradorEspecificacoes {
             }
         } catch (error) {
             console.error('Erro ao carregar orçamento:', error);
-            alert('Erro ao carregar orçamento. Verifique o formato do arquivo.');
+            this.showError(`Erro ao carregar orçamento: ${error.message}.`);
         }
     }
 
@@ -173,31 +224,73 @@ class GeradorEspecificacoes {
     }
 
     processBudgetData(data) {
+        // Mapeamento flexível de chaves (simulando a lógica do Python)
+        // A ordem é importante: a primeira chave encontrada será usada.
+        const keyMap = {
+            'Código': ['Código', 'Codigo'],
+            'Descrição': ['Descrição', 'Descricao'],
+            'Quant.': ['Quant.', 'Quant', 'QTDE', 'Quantidade'], 
+            'Item': ['Item'],
+            'Banco': ['Banco'],
+            'Und': ['Und', 'UNID']
+        };
+
+        // Função auxiliar para encontrar o valor correto dada uma lista de possíveis chaves
+        const findKey = (item, potentialKeys) => {
+            for (const key of potentialKeys) {
+                if (item.hasOwnProperty(key)) {
+                    return item[key];
+                }
+            }
+            return undefined;
+        };
+
         // Filtra e processa dados do orçamento
         return data.map(item => {
-            // O item 'Código' pode vir como número ou string, normaliza para string
-            const codigo = item.Código ? String(item.Código).trim() : '';
+            // Usa o mapeamento flexível para obter os valores
+            const itemValue = findKey(item, keyMap['Item']);
+            const codigoValue = findKey(item, keyMap['Código']);
+            const descricaoValue = findKey(item, keyMap['Descrição']);
+            const quantidadeValue = findKey(item, keyMap['Quant.']);
             
-            // FIX CRÍTICO: Usa a chave 'Quant.' (com ponto) que é a correta no seu Excel
-            const quantidadeValue = item['Quant.']; 
+            const codigo = codigoValue ? String(codigoValue).trim() : '';
+            const descricao = descricaoValue ? String(descricaoValue).trim() : '';
 
-            // Assume que só queremos itens que tenham código e descrição
-            // E que o item não seja uma linha de totalizador (que tem Descrição mas não Código)
-            if (codigo && item.Descrição) {
-                // Remove espaços extras e caracteres não-alfanuméricos
+            // 1. Filtros (Remove linhas vazias, nulas ou totais, como no Python)
+            if (!itemValue || 
+                String(itemValue).toLowerCase().includes('total') || 
+                String(itemValue).toLowerCase().includes('nan')) {
+                return null;
+            }
+            
+            // 2. Filtro principal (Deve ter Código e Descrição)
+            if (codigo && descricao) {
+                // Limpeza do Código (remove caracteres não-alfanuméricos)
                 const cleanedCodigo = codigo.replace(/[^a-zA-Z0-9]/g, ''); 
                 
-                // Retorna um objeto padronizado
+                // Processamento da Quantidade
+                let quantidade = 0;
+                if (quantidadeValue !== undefined && quantidadeValue !== null) {
+                    // Tenta converter para float, tratando o separador decimal (se for string)
+                    let quantStr = String(quantidadeValue);
+                    // Remove ponto como separador de milhar e usa ponto como decimal (se houver vírgula)
+                    quantStr = quantStr.replace(/\./g, '').replace(',', '.'); 
+                    quantidade = parseFloat(quantStr) || 0;
+                }
+                
+                // Retorna o objeto padronizado
                 return {
+                    item: String(itemValue).trim(),
                     codigo: cleanedCodigo,
-                    descricao: String(item.Descrição).trim(),
-                    // Converte para float, tratando o separador de milhar/decimal
-                    quantidade: quantidadeValue !== undefined ? parseFloat(String(quantidadeValue).replace(',', '.')) : 0, 
+                    descricao: descricao,
+                    banco: findKey(item, keyMap['Banco']) || '',
+                    und: findKey(item, keyMap['Und']) || '',
+                    quantidade: quantidade, 
                     itemOriginal: item 
                 };
             }
             return null;
-        }).filter(item => item !== null);
+        }).filter(item => item !== null && item.quantidade > 0); // Filtra itens nulos e com quantidade zero
     }
 
     loadLocalDatabase() {
